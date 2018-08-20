@@ -1,10 +1,13 @@
-import HslToRgb from "hsl-to-rgb";
+import HslToRgb from "./hsl-to-rgb";
 import Scale8bitTo1 from "./scale8bitTo1";
 import * as ImageDataHelpers from "./imagedata-helpers";
 
 const canvas = document.getElementById("gameScreen");
 
-const context = canvas.msGetInputContext("2d");
+const context = canvas.getContext("2d");
+
+const w = canvas.width;
+const h = canvas.height;
 
 // generate a color palette?
 const palette = [];
@@ -17,43 +20,41 @@ for (let i = 0; i < 256; i++) {
   );
 }
 
+// keep a buffer of palette indices,
+// since we do math on these, not on actual colour values
+const fire = [];
+// initialise the fire to palette color 0 everywhere
+for (let y = 0; y < h; y++) {
+  fire[y] = [];
+  for (let x = 0; x < w; x++) fire[y][x] = 0;
+}
+
 const tick = () => {
-  const w = canvas.width;
-  const h = canvas.height;
-
-  // get imagedata from the existing canvas
-  const imageData = context.getImageData(0, 0, w, h);
-
   // randomise the bottom row
   for (let x = 0; x < w; x++) {
-    ImageDataHelpers.setPixel(
-      imageData,
-      x,
-      h - 1,
-      palette[Math.floor(Math.random() * 256)]
-    );
+    fire[h - 1][x] = Math.floor(Math.random() * 256);
   }
 
-  // calculate modification for all other pixels from the bottom up
+  // calculate modification for all other pixels from top to bottom
   for (let y = 0; y < h - 1; y++) {
     for (let x = 0; x < w; x++) {
-      // get nearby pixel colors
-      const p1 = ImageDataHelpers.getPixel(
-        imageData,
-        (x - 1 + w) % w,
-        (y + 1) % h
-      );
-      const p2 = ImageDataHelpers.getPixel(imageData, x % w, (y + 1) % h);
-      const p3 = ImageDataHelpers.getPixel(imageData, (x + 1) % w, (y + 1) % h);
-      const p4 = ImageDataHelpers.getPixel(imageData, x % w, (y + 2) % h);
+      // get nearby pixel palette indices
+      const p1 = fire[(y + 1) % h][(x - 1 + w) % w];
+      const p2 = fire[(y + 1) % h][x % w];
+      const p3 = fire[(y + 1) % h][(x + 1) % w];
+      const p4 = fire[(y + 2) % h][x % w];
 
-      // set this pixel
-      ImageDataHelpers.setPixel(
-        imageData,
-        x,
-        y,
-        ((p1 + p2 + p3 + p4) * 32) / 129
-      );
+      // calculate and set new palette index for this pixel
+      fire[y][x] = Math.floor(((p1 + p2 + p3 + p4) * 128) / 513);
+    }
+  }
+
+  // create an imagedata from our pixels' palette indices
+  const imageData = context.createImageData(w, h);
+  for (let y = 0; y < h - 1; y++) {
+    for (let x = 0; x < w; x++) {
+      const [r, g, b] = palette[fire[y][x]];
+      ImageDataHelpers.setPixel(imageData, x, y, { r, g, b, a: 255 });
     }
   }
 
